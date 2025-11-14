@@ -1,0 +1,381 @@
+<!DOCTYPE html>
+<html lang="zh">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+    <title>OLED 烟花模拟器 (高亮版)</title>
+    <style>
+        /* 基础页面样式 */
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden; /* 隐藏滚动条 */
+            background-color: #000; /* 纯黑夜空 */
+        }
+
+        /* 游戏画布 */
+        #fireworksCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+            background-color: #000; /* 纯黑背景 */
+            touch-action: none; /* 禁用默认的触摸操作，如缩放 */
+            cursor: crosshair; /* 鼠标样式改为十字准星 */
+        }
+        
+        /* 提示文字 */
+        #infoText {
+            position: absolute;
+            bottom: 20px;
+            left: 50%;
+            transform: translateX(-50%);
+            font-size: 16px;
+            color: rgba(255, 255, 255, 0.5);
+            font-family: Arial, sans-serif;
+            pointer-events: none; /* 穿透点击 */
+            text-shadow: 0 0 5px #000;
+        }
+    </style>
+</head>
+<body>
+
+    <canvas id="fireworksCanvas"></canvas>
+    <div id="infoText">点击或拖动屏幕来释放烟花</div>
+
+    <script>
+        // --- 1. 初始化 ---
+        const canvas = document.getElementById('fireworksCanvas');
+        const ctx = canvas.getContext('2d');
+        const infoText = document.getElementById('infoText');
+
+        let canvasWidth, canvasHeight;
+        // 移除 stars 数组
+        let rockets = [];
+        let particles = [];
+        let mouse = { x: 0, y: 0, down: false };
+
+        // 辅助函数
+        const rand = (min, max) => Math.random() * (max - min) + min;
+
+        // --- 2. 实体类定义 ---
+
+        // 移除 Star 类
+
+        // 烟花火箭 (发射器)
+        class Rocket {
+            constructor(tx, ty) {
+                this.x = canvasWidth / 2; // 从底部中间发射
+                this.y = canvasHeight;
+                this.tx = tx; // 目标x
+                this.ty = ty; // 目标y
+                
+                this.hue = rand(0, 360);
+                // OLED 优化: 提升火箭亮度
+                this.brightness = rand(60, 90); // 原 (50, 80)
+                
+                this.trail = [];
+                this.speed = rand(4, 7);
+                
+                // 计算角度和速度
+                const angle = Math.atan2(ty - this.y, tx - this.x);
+                this.vx = Math.cos(angle) * this.speed;
+                this.vy = Math.sin(angle) * this.speed;
+            }
+
+            update() {
+                this.x += this.vx;
+                this.y += this.vy;
+                
+                // 更新轨迹
+                this.trail.push({ x: this.x, y: this.y, opacity: 1 });
+                if (this.trail.length > 5) this.trail.shift();
+                
+                // 轨迹透明度衰减
+                this.trail.forEach(t => t.opacity *= 0.9);
+
+                // 到达目标点 (或飞过目标点)
+                if (this.y < this.ty) {
+                    // 创建爆炸
+                    createExplosion(this.tx, this.ty);
+                    // 标记为待移除
+                    return false; 
+                }
+                return true;
+            }
+
+            draw() {
+                ctx.beginPath();
+                // 画轨迹
+                if (this.trail.length > 0) {
+                    const last = this.trail[this.trail.length - 1];
+                    ctx.moveTo(last.x, last.y);
+                    for(let i = this.trail.length - 2; i >= 0; i--) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${this.trail[0].opacity})`;
+                    ctx.lineWidth = 2;
+                    ctx.stroke();
+                }
+                
+                // 画火箭头
+                ctx.fillStyle = `hsl(${this.hue}, 100%, ${this.brightness}%)`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // 爆炸粒子
+        class Particle {
+            constructor(x, y, params) {
+                this.x = x;
+                this.y = y;
+                this.params = params; // 继承爆炸的所有随机参数
+                
+                // 基于爆炸参数，再次随机化每个粒子
+                const angle = rand(0, Math.PI * 2);
+                const speed = rand(params.speedMin, params.speedMax);
+                
+                this.vx = Math.cos(angle) * speed;
+                this.vy = Math.sin(angle) * speed;
+                
+                this.hue = rand(params.baseHue - params.hueVariance, params.baseHue + params.hueVariance);
+                this.brightness = rand(params.brightnessMin, params.brightnessMax);
+                this.opacity = 1;
+                this.lifespan = params.lifespan;
+                
+                this.trail = [];
+            }
+
+            update() {
+                this.lifespan--;
+                if (this.lifespan <= 0) return false;
+
+                // 物理计算
+                this.vx *= this.params.friction;
+                this.vy *= this.params.friction;
+                this.vy += this.params.gravity;
+                
+                this.x += this.vx;
+                this.y += this.vy;
+
+                // 亮度衰减
+                this.opacity -= rand(this.params.fadeMin, this.params.fadeMax);
+                if (this.opacity < 0) this.opacity = 0;
+                
+                // 闪烁
+                if (this.params.flicker && Math.random() < 0.1) {
+                    this.brightness = rand(this.params.brightnessMin, this.params.brightnessMax);
+                }
+
+                // 轨迹
+                if (this.params.hasTrail) {
+                    this.trail.push({ x: this.x, y: this.y, opacity: this.opacity * 0.5 });
+                    if (this.trail.length > 3) this.trail.shift();
+                    this.trail.forEach(t => t.opacity *= 0.8);
+                }
+
+                // 噼啪 (Crackle)
+                if (Math.random() < this.params.crackleChance) {
+                    createCrackle(this.x, this.y, this.params.crackleParams);
+                }
+                
+                return this.opacity > 0;
+            }
+
+            draw() {
+                // 画轨迹
+                if (this.params.hasTrail && this.trail.length > 0) {
+                    ctx.beginPath();
+                    const last = this.trail[this.trail.length - 1];
+                    ctx.moveTo(last.x, last.y);
+                    for(let i = this.trail.length - 2; i >= 0; i--) {
+                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
+                    }
+                    ctx.strokeStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.trail[0].opacity})`;
+                    ctx.lineWidth = this.params.size;
+                    ctx.stroke();
+                }
+                
+                // 画粒子
+                ctx.fillStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity})`;
+                ctx.beginPath();
+                ctx.arc(this.x, this.y, this.params.size, 0, Math.PI * 2);
+                ctx.fill();
+            }
+        }
+
+        // --- 3. 核心功能 ---
+
+        // 创建一次爆炸
+        function createExplosion(x, y) {
+            // --- 恢复原始的华丽参数 ---
+            const params = {
+                // 恢复: 粒子数量 (100-400)
+                count: Math.floor(rand(100, 400)),
+                baseHue: rand(0, 360),
+                hueVariance: rand(0, 30),
+                saturation: rand(80, 100),
+                // OLED 优化: 提升粒子亮度
+                brightnessMin: rand(70, 90), // 原 (60, 80)
+                brightnessMax: rand(90, 100), // 原 (80, 100)
+                fadeMin: 0.01,
+                fadeMax: 0.03,
+                speedMin: rand(2, 4),
+                speedMax: rand(5, 12),
+                gravity: rand(0.05, 0.15),
+                friction: rand(0.95, 0.98),
+                size: rand(1, 3), // 恢复原始尺寸
+                // 恢复: 粒子寿命 (80-150)
+                lifespan: rand(80, 150),
+                // 恢复: 拖尾几率 (60%)
+                hasTrail: Math.random() > 0.4,
+                flicker: Math.random() > 0.5,
+                // 恢复: 噼啪几率
+                crackleChance: rand(0, 0.05),
+                crackleParams: {
+                    count: Math.floor(rand(5, 15)),
+                    speed: rand(1, 3),
+                    lifespan: rand(10, 30),
+                    size: rand(0.5, 1.5)
+                }
+            };
+
+            // 创建粒子
+            for (let i = 0; i < params.count; i++) {
+                particles.push(new Particle(x, y, params));
+            }
+        }
+        
+        // 创建噼啪 (Crackle) 效果
+        function createCrackle(x, y, crackleParams) {
+             // 噼啪效果通常是明亮的白色或金色
+            const crackleBaseParams = {
+                baseHue: 0, 
+                hueVariance: 0,
+                saturation: 0, // 白色
+                // OLED 优化: 提升噼啪亮度
+                brightnessMin: 95, // 原 90
+                brightnessMax: 100,
+                fadeMin: 0.05,
+                fadeMax: 0.1,
+                speedMin: crackleParams.speed,
+                speedMax: crackleParams.speed,
+                gravity: rand(0.01, 0.03), 
+                friction: 0.95,
+                size: crackleParams.size,
+                lifespan: crackleParams.lifespan,
+                hasTrail: false,
+                flicker: true,
+                crackleChance: 0
+            };
+            
+            for (let i = 0; i < crackleParams.count; i++) {
+                particles.push(new Particle(x, y, crackleBaseParams));
+            }
+        }
+
+        // 设置画布大小 (响应式)
+        function setCanvasSize() {
+            canvasWidth = window.innerWidth;
+            canvasHeight = window.innerHeight;
+            canvas.width = canvasWidth;
+            canvas.height = canvasHeight;
+        }
+
+        // 游戏循环
+        function gameLoop() {
+            // 保留原始的拖尾效果 (alpha 0.15)
+            // 这仍然是纯黑背景，只是旧的帧会慢慢淡出
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+            // 1. 移除星星的更新和绘制
+
+            // 2. 更新和绘制火箭
+            for (let i = rockets.length - 1; i >= 0; i--) {
+                if (!rockets[i].update()) {
+                    rockets.splice(i, 1);
+                } else {
+                    rockets[i].draw();
+                }
+            }
+            
+            // 3. 更新和绘制粒子
+            for (let i = particles.length - 1; i >= 0; i--) {
+                if (!particles[i].update()) {
+                    particles.splice(i, 1);
+                } else {
+                    particles[i].draw();
+                }
+            }
+
+            // 4. 请求下一帧
+            requestAnimationFrame(gameLoop);
+        }
+
+        // --- 4. 事件监听 ---
+        
+        // 窗口大小改变
+        window.addEventListener('resize', setCanvasSize);
+        
+        function handleInteractionStart(e) {
+            e.preventDefault();
+            mouse.down = true;
+            let x, y;
+            if (e.touches) {
+                x = e.touches[0].clientX;
+                y = e.touches[0].clientY;
+            } else {
+                x = e.clientX;
+                y = e.clientY;
+            }
+            rockets.push(new Rocket(x, y));
+            // 隐藏提示
+            infoText.style.opacity = '0';
+        }
+
+        function handleInteractionMove(e) {
+            e.preventDefault();
+            if (!mouse.down) return;
+            
+            let x, y;
+            if (e.touches) {
+                x = e.touches[0].clientX;
+                y = e.touches[0].clientY;
+            } else {
+                x = e.clientX;
+                y = e.clientY;
+            }
+            
+            // 恢复原始的拖动发射频率
+            if (Math.random() < 0.2) { 
+                 rockets.push(new Rocket(x, y));
+            }
+        }
+        
+        function handleInteractionEnd(e) {
+            e.preventDefault();
+            mouse.down = false;
+        }
+
+        canvas.addEventListener('mousedown', handleInteractionStart);
+        canvas.addEventListener('touchstart', handleInteractionStart, { passive: false });
+        
+        canvas.addEventListener('mousemove', handleInteractionMove);
+        canvas.addEventListener('touchmove', handleInteractionMove, { passive: false });
+        
+        canvas.addEventListener('mouseup', handleInteractionEnd);
+        canvas.addEventListener('touchend', handleInteractionEnd);
+
+        // --- 5. 游戏启动 ---
+        setCanvasSize();
+        // 移除创建星星的循环
+        gameLoop();
+
+    </script>
+</body>
+</html>
+
