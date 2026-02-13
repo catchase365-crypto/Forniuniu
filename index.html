@@ -3,29 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>OLED ÑÌ»¨Ä£ÄâÆ÷ (¸ßÁÁ°æ)</title>
+    <title>OLED çƒŸèŠ±æ¨¡æ‹Ÿå™¨ (é«˜äº®ç‰ˆ)</title>
     <style>
-        /* »ù´¡Ò³ÃæÑùÊ½ */
+        /* åŸºç¡€é¡µé¢æ ·å¼ */
         body, html {
             margin: 0;
             padding: 0;
             width: 100%;
             height: 100%;
-            overflow: hidden; /* Òş²Ø¹ö¶¯Ìõ */
-            background-color: #000; /* ´¿ºÚÒ¹¿Õ */
+            overflow: hidden; /* éšè—æ»šåŠ¨æ¡ */
+            background-color: #000; /* çº¯é»‘å¤œç©º */
         }
 
-        /* ÓÎÏ·»­²¼ */
+        /* æ¸¸æˆç”»å¸ƒ */
         #fireworksCanvas {
             display: block;
             width: 100%;
             height: 100%;
-            background-color: #000; /* ´¿ºÚ±³¾° */
-            touch-action: none; /* ½ûÓÃÄ¬ÈÏµÄ´¥Ãş²Ù×÷£¬ÈçËõ·Å */
-            cursor: crosshair; /* Êó±êÑùÊ½¸ÄÎªÊ®×Ö×¼ĞÇ */
+            background-color: #000;
+            touch-action: none;
+            cursor: crosshair;
+            image-rendering: -webkit-optimize-contrast;
+            will-change: transform;
+            transform: translateZ(0); /* å¼ºåˆ¶å¼€å¯GPUåŠ é€Ÿ */
         }
         
-        /* ÌáÊ¾ÎÄ×Ö */
+        /* æç¤ºæ–‡å­— */
         #infoText {
             position: absolute;
             bottom: 20px;
@@ -34,7 +37,7 @@
             font-size: 16px;
             color: rgba(255, 255, 255, 0.5);
             font-family: Arial, sans-serif;
-            pointer-events: none; /* ´©Í¸µã»÷ */
+            pointer-events: none; /* ç©¿é€ç‚¹å‡» */
             text-shadow: 0 0 5px #000;
         }
     </style>
@@ -42,43 +45,43 @@
 <body>
 
     <canvas id="fireworksCanvas"></canvas>
-    <div id="infoText">µã»÷»òÍÏ¶¯ÆÁÄ»À´ÊÍ·ÅÑÌ»¨</div>
+    <div id="infoText">ç‚¹å‡»æˆ–æ‹–åŠ¨å±å¹•æ¥é‡Šæ”¾çƒŸèŠ±</div>
 
     <script>
-        // --- 1. ³õÊ¼»¯ ---
+        // --- 1. åˆå§‹åŒ– ---
         const canvas = document.getElementById('fireworksCanvas');
         const ctx = canvas.getContext('2d');
         const infoText = document.getElementById('infoText');
 
         let canvasWidth, canvasHeight;
-        // ÒÆ³ı stars Êı×é
+        // ç§»é™¤ stars æ•°ç»„
         let rockets = [];
         let particles = [];
         let mouse = { x: 0, y: 0, down: false };
 
-        // ¸¨Öúº¯Êı
+        // è¾…åŠ©å‡½æ•°
         const rand = (min, max) => Math.random() * (max - min) + min;
 
-        // --- 2. ÊµÌåÀà¶¨Òå ---
+        // --- 2. å®ä½“ç±»å®šä¹‰ ---
 
-        // ÒÆ³ı Star Àà
+        // ç§»é™¤ Star ç±»
 
-        // ÑÌ»¨»ğ¼ı (·¢ÉäÆ÷)
+        // çƒŸèŠ±ç«ç®­ (å‘å°„å™¨)
         class Rocket {
             constructor(tx, ty) {
-                this.x = canvasWidth / 2; // ´Óµ×²¿ÖĞ¼ä·¢Éä
+                this.x = canvasWidth / 2; // ä»åº•éƒ¨ä¸­é—´å‘å°„
                 this.y = canvasHeight;
-                this.tx = tx; // Ä¿±êx
-                this.ty = ty; // Ä¿±êy
+                this.tx = tx; // ç›®æ ‡x
+                this.ty = ty; // ç›®æ ‡y
                 
                 this.hue = rand(0, 360);
-                // OLED ÓÅ»¯: ÌáÉı»ğ¼ıÁÁ¶È
-                this.brightness = rand(60, 90); // Ô­ (50, 80)
+                // OLED ä¼˜åŒ–: æå‡ç«ç®­äº®åº¦
+                this.brightness = rand(60, 90); // åŸ (50, 80)
                 
                 this.trail = [];
                 this.speed = rand(4, 7);
                 
-                // ¼ÆËã½Ç¶ÈºÍËÙ¶È
+                // è®¡ç®—è§’åº¦å’Œé€Ÿåº¦
                 const angle = Math.atan2(ty - this.y, tx - this.x);
                 this.vx = Math.cos(angle) * this.speed;
                 this.vy = Math.sin(angle) * this.speed;
@@ -88,18 +91,18 @@
                 this.x += this.vx;
                 this.y += this.vy;
                 
-                // ¸üĞÂ¹ì¼£
+                // æ›´æ–°è½¨è¿¹
                 this.trail.push({ x: this.x, y: this.y, opacity: 1 });
                 if (this.trail.length > 5) this.trail.shift();
                 
-                // ¹ì¼£Í¸Ã÷¶ÈË¥¼õ
+                // è½¨è¿¹é€æ˜åº¦è¡°å‡
                 this.trail.forEach(t => t.opacity *= 0.9);
 
-                // µ½´ïÄ¿±êµã (»ò·É¹ıÄ¿±êµã)
+                // åˆ°è¾¾ç›®æ ‡ç‚¹ (æˆ–é£è¿‡ç›®æ ‡ç‚¹)
                 if (this.y < this.ty) {
-                    // ´´½¨±¬Õ¨
+                    // åˆ›å»ºçˆ†ç‚¸
                     createExplosion(this.tx, this.ty);
-                    // ±ê¼ÇÎª´ıÒÆ³ı
+                    // æ ‡è®°ä¸ºå¾…ç§»é™¤
                     return false; 
                 }
                 return true;
@@ -107,7 +110,7 @@
 
             draw() {
                 ctx.beginPath();
-                // »­¹ì¼£
+                // ç”»è½¨è¿¹
                 if (this.trail.length > 0) {
                     const last = this.trail[this.trail.length - 1];
                     ctx.moveTo(last.x, last.y);
@@ -119,7 +122,7 @@
                     ctx.stroke();
                 }
                 
-                // »­»ğ¼ıÍ·
+                // ç”»ç«ç®­å¤´
                 ctx.fillStyle = `hsl(${this.hue}, 100%, ${this.brightness}%)`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
@@ -127,14 +130,14 @@
             }
         }
 
-        // ±¬Õ¨Á£×Ó
+        // çˆ†ç‚¸ç²’å­
         class Particle {
             constructor(x, y, params) {
                 this.x = x;
                 this.y = y;
-                this.params = params; // ¼Ì³Ğ±¬Õ¨µÄËùÓĞËæ»ú²ÎÊı
+                this.params = params; // ç»§æ‰¿çˆ†ç‚¸çš„æ‰€æœ‰éšæœºå‚æ•°
                 
-                // »ùÓÚ±¬Õ¨²ÎÊı£¬ÔÙ´ÎËæ»ú»¯Ã¿¸öÁ£×Ó
+                // åŸºäºçˆ†ç‚¸å‚æ•°ï¼Œå†æ¬¡éšæœºåŒ–æ¯ä¸ªç²’å­
                 const angle = rand(0, Math.PI * 2);
                 const speed = rand(params.speedMin, params.speedMax);
                 
@@ -153,7 +156,7 @@
                 this.lifespan--;
                 if (this.lifespan <= 0) return false;
 
-                // ÎïÀí¼ÆËã
+                // ç‰©ç†è®¡ç®—
                 this.vx *= this.params.friction;
                 this.vy *= this.params.friction;
                 this.vy += this.params.gravity;
@@ -161,23 +164,23 @@
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // ÁÁ¶ÈË¥¼õ
+                // äº®åº¦è¡°å‡
                 this.opacity -= rand(this.params.fadeMin, this.params.fadeMax);
                 if (this.opacity < 0) this.opacity = 0;
                 
-                // ÉÁË¸
+                // é—ªçƒ
                 if (this.params.flicker && Math.random() < 0.1) {
                     this.brightness = rand(this.params.brightnessMin, this.params.brightnessMax);
                 }
 
-                // ¹ì¼£
+                // è½¨è¿¹
                 if (this.params.hasTrail) {
                     this.trail.push({ x: this.x, y: this.y, opacity: this.opacity * 0.5 });
                     if (this.trail.length > 3) this.trail.shift();
                     this.trail.forEach(t => t.opacity *= 0.8);
                 }
 
-                // àèÅ¾ (Crackle)
+                // å™¼å•ª (Crackle)
                 if (Math.random() < this.params.crackleChance) {
                     createCrackle(this.x, this.y, this.params.crackleParams);
                 }
@@ -186,55 +189,58 @@
             }
 
             draw() {
-                // »­¹ì¼£
+                ctx.globalCompositeOperation = 'lighter'; // ä½¿ç”¨æ»¤è‰²æ¨¡å¼å¢åŠ å‘å…‰æ„Ÿ
+                
                 if (this.params.hasTrail && this.trail.length > 0) {
                     ctx.beginPath();
-                    const last = this.trail[this.trail.length - 1];
-                    ctx.moveTo(last.x, last.y);
-                    for(let i = this.trail.length - 2; i >= 0; i--) {
+                    ctx.strokeStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity * 0.3})`;
+                    ctx.lineWidth = this.params.size;
+                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
+                    for(let i = 1; i < this.trail.length; i++) {
                         ctx.lineTo(this.trail[i].x, this.trail[i].y);
                     }
-                    ctx.strokeStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.trail[0].opacity})`;
-                    ctx.lineWidth = this.params.size;
                     ctx.stroke();
                 }
                 
-                // »­Á£×Ó
+                // ä½¿ç”¨fillRectæ›¿ä»£arcæé«˜æ¸²æŸ“æ•ˆç‡ï¼Œå¹¶äº§ç”Ÿåƒç´ é£çš„ç»†è…»æ„Ÿ
                 ctx.fillStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity})`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, this.params.size, 0, Math.PI * 2);
-                ctx.fill();
+                const s = this.params.size * (0.5 + Math.random() * 0.5);
+                ctx.fillRect(this.x - s/2, this.y - s/2, s, s);
+                
+                ctx.globalCompositeOperation = 'source-over';
             }
         }
 
-        // --- 3. ºËĞÄ¹¦ÄÜ ---
+        // --- 3. æ ¸å¿ƒåŠŸèƒ½ ---
 
-        // ´´½¨Ò»´Î±¬Õ¨
+        // åˆ›å»ºä¸€æ¬¡çˆ†ç‚¸
         function createExplosion(x, y) {
-            // --- »Ö¸´Ô­Ê¼µÄ»ªÀö²ÎÊı ---
+            // å¢åŠ ç¬é—´é—ªå…‰æ•ˆæœ
+            ctx.save();
+            ctx.beginPath();
+            ctx.arc(x, y, rand(50, 100), 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.fill();
+            ctx.restore();
+
             const params = {
-                // »Ö¸´: Á£×ÓÊıÁ¿ (100-400)
-                count: Math.floor(rand(100, 400)),
+                count: Math.floor(rand(150, 300)), // å¯†åº¦ä¼˜åŒ–ï¼Œå¹³è¡¡æ€§èƒ½
                 baseHue: rand(0, 360),
-                hueVariance: rand(0, 30),
-                saturation: rand(80, 100),
-                // OLED ÓÅ»¯: ÌáÉıÁ£×ÓÁÁ¶È
-                brightnessMin: rand(70, 90), // Ô­ (60, 80)
-                brightnessMax: rand(90, 100), // Ô­ (80, 100)
-                fadeMin: 0.01,
-                fadeMax: 0.03,
-                speedMin: rand(2, 4),
-                speedMax: rand(5, 12),
-                gravity: rand(0.05, 0.15),
-                friction: rand(0.95, 0.98),
-                size: rand(1, 3), // »Ö¸´Ô­Ê¼³ß´ç
-                // »Ö¸´: Á£×ÓÊÙÃü (80-150)
-                lifespan: rand(80, 150),
-                // »Ö¸´: ÍÏÎ²¼¸ÂÊ (60%)
-                hasTrail: Math.random() > 0.4,
-                flicker: Math.random() > 0.5,
-                // »Ö¸´: àèÅ¾¼¸ÂÊ
-                crackleChance: rand(0, 0.05),
+                hueVariance: rand(15, 45),
+                saturation: 100,
+                brightnessMin: 70,
+                brightnessMax: 100,
+                fadeMin: 0.008, // æ›´é•¿çš„æ¶ˆæ•£è¿‡ç¨‹
+                fadeMax: 0.02,
+                speedMin: 1,
+                speedMax: 10,
+                gravity: 0.08,
+                friction: 0.96,
+                size: rand(0.8, 2.5),
+                lifespan: rand(100, 180),
+                hasTrail: true,
+                flicker: true,
+                crackleChance: 0.005,
                 crackleParams: {
                     count: Math.floor(rand(5, 15)),
                     speed: rand(1, 3),
@@ -243,21 +249,21 @@
                 }
             };
 
-            // ´´½¨Á£×Ó
+            // åˆ›å»ºç²’å­
             for (let i = 0; i < params.count; i++) {
                 particles.push(new Particle(x, y, params));
             }
         }
         
-        // ´´½¨àèÅ¾ (Crackle) Ğ§¹û
+        // åˆ›å»ºå™¼å•ª (Crackle) æ•ˆæœ
         function createCrackle(x, y, crackleParams) {
-             // àèÅ¾Ğ§¹ûÍ¨³£ÊÇÃ÷ÁÁµÄ°×É«»ò½ğÉ«
+             // å™¼å•ªæ•ˆæœé€šå¸¸æ˜¯æ˜äº®çš„ç™½è‰²æˆ–é‡‘è‰²
             const crackleBaseParams = {
                 baseHue: 0, 
                 hueVariance: 0,
-                saturation: 0, // °×É«
-                // OLED ÓÅ»¯: ÌáÉıàèÅ¾ÁÁ¶È
-                brightnessMin: 95, // Ô­ 90
+                saturation: 0, // ç™½è‰²
+                // OLED ä¼˜åŒ–: æå‡å™¼å•ªäº®åº¦
+                brightnessMin: 95, // åŸ 90
                 brightnessMax: 100,
                 fadeMin: 0.05,
                 fadeMax: 0.1,
@@ -277,7 +283,7 @@
             }
         }
 
-        // ÉèÖÃ»­²¼´óĞ¡ (ÏìÓ¦Ê½)
+        // è®¾ç½®ç”»å¸ƒå¤§å° (å“åº”å¼)
         function setCanvasSize() {
             canvasWidth = window.innerWidth;
             canvasHeight = window.innerHeight;
@@ -285,16 +291,15 @@
             canvas.height = canvasHeight;
         }
 
-        // ÓÎÏ·Ñ­»·
+        // æ¸¸æˆå¾ªç¯
         function gameLoop() {
-            // ±£ÁôÔ­Ê¼µÄÍÏÎ²Ğ§¹û (alpha 0.15)
-            // ÕâÈÔÈ»ÊÇ´¿ºÚ±³¾°£¬Ö»ÊÇ¾ÉµÄÖ¡»áÂıÂıµ­³ö
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.15)';
+            // ä¼˜åŒ–èƒŒæ™¯æ¸…é™¤ï¼Œä½¿ç”¨æ›´è–„çš„å±‚äº§ç”Ÿä¸æ»‘çš„åŠ¨æ€æ¨¡ç³Š
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
-            // 1. ÒÆ³ıĞÇĞÇµÄ¸üĞÂºÍ»æÖÆ
+            // 1. ç§»é™¤æ˜Ÿæ˜Ÿçš„æ›´æ–°å’Œç»˜åˆ¶
 
-            // 2. ¸üĞÂºÍ»æÖÆ»ğ¼ı
+            // 2. æ›´æ–°å’Œç»˜åˆ¶ç«ç®­
             for (let i = rockets.length - 1; i >= 0; i--) {
                 if (!rockets[i].update()) {
                     rockets.splice(i, 1);
@@ -303,7 +308,7 @@
                 }
             }
             
-            // 3. ¸üĞÂºÍ»æÖÆÁ£×Ó
+            // 3. æ›´æ–°å’Œç»˜åˆ¶ç²’å­
             for (let i = particles.length - 1; i >= 0; i--) {
                 if (!particles[i].update()) {
                     particles.splice(i, 1);
@@ -312,13 +317,13 @@
                 }
             }
 
-            // 4. ÇëÇóÏÂÒ»Ö¡
+            // 4. è¯·æ±‚ä¸‹ä¸€å¸§
             requestAnimationFrame(gameLoop);
         }
 
-        // --- 4. ÊÂ¼ş¼àÌı ---
+        // --- 4. äº‹ä»¶ç›‘å¬ ---
         
-        // ´°¿Ú´óĞ¡¸Ä±ä
+        // çª—å£å¤§å°æ”¹å˜
         window.addEventListener('resize', setCanvasSize);
         
         function handleInteractionStart(e) {
@@ -333,7 +338,7 @@
                 y = e.clientY;
             }
             rockets.push(new Rocket(x, y));
-            // Òş²ØÌáÊ¾
+            // éšè—æç¤º
             infoText.style.opacity = '0';
         }
 
@@ -350,7 +355,7 @@
                 y = e.clientY;
             }
             
-            // »Ö¸´Ô­Ê¼µÄÍÏ¶¯·¢ÉäÆµÂÊ
+            // æ¢å¤åŸå§‹çš„æ‹–åŠ¨å‘å°„é¢‘ç‡
             if (Math.random() < 0.2) { 
                  rockets.push(new Rocket(x, y));
             }
@@ -370,9 +375,9 @@
         canvas.addEventListener('mouseup', handleInteractionEnd);
         canvas.addEventListener('touchend', handleInteractionEnd);
 
-        // --- 5. ÓÎÏ·Æô¶¯ ---
+        // --- 5. æ¸¸æˆå¯åŠ¨ ---
         setCanvasSize();
-        // ÒÆ³ı´´½¨ĞÇĞÇµÄÑ­»·
+        // ç§»é™¤åˆ›å»ºæ˜Ÿæ˜Ÿçš„å¾ªç¯
         gameLoop();
 
     </script>
