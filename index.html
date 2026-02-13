@@ -75,11 +75,11 @@
                 this.ty = ty; // 目标y
                 
                 this.hue = rand(0, 360);
-                // OLED 优化: 提升火箭亮度
-                this.brightness = rand(60, 90); // 原 (50, 80)
+                // OLED 优化: 极大提升亮度
+                this.brightness = rand(50, 75); // 降低亮度以确保色彩饱和度，避免发白
                 
                 this.trail = [];
-                this.speed = rand(4, 7);
+                this.speed = rand(10, 18); // 极大提升发射速度
                 
                 // 计算角度和速度
                 const angle = Math.atan2(ty - this.y, tx - this.x);
@@ -215,37 +215,40 @@
 
         // 创建一次爆炸
         function createExplosion(x, y) {
+            // 随机爆炸规模因子 (0.4 到 1.2)，控制烟花整体大小范围
+            const scale = rand(0.4, 1.2);
+            
             // 增加瞬间闪光效果
             ctx.save();
             ctx.beginPath();
-            ctx.arc(x, y, rand(50, 100), 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.1)';
+            ctx.arc(x, y, rand(40, 80) * scale, 0, Math.PI * 2);
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; 
             ctx.fill();
             ctx.restore();
 
             const params = {
-                count: Math.floor(rand(150, 300)), // 密度优化，平衡性能
+                count: Math.floor(rand(80, 180) * scale), // 粒子数量随规模变化
                 baseHue: rand(0, 360),
-                hueVariance: rand(15, 45),
+                hueVariance: rand(30, 60),
                 saturation: 100,
-                brightnessMin: 70,
-                brightnessMax: 100,
-                fadeMin: 0.008, // 更长的消散过程
-                fadeMax: 0.02,
-                speedMin: 1,
-                speedMax: 10,
-                gravity: 0.08,
+                brightnessMin: 50, 
+                brightnessMax: 80,
+                fadeMin: 0.01, 
+                fadeMax: 0.025,
+                speedMin: 4 * scale, // 扩散速度随规模变化
+                speedMax: 16 * scale,
+                gravity: 0.12,
                 friction: 0.96,
-                size: rand(0.8, 2.5),
-                lifespan: rand(100, 180),
+                size: rand(2, 4.5) * scale, // 粒子个体大小随规模变化
+                lifespan: rand(40, 90),
                 hasTrail: true,
                 flicker: true,
                 crackleChance: 0.005,
                 crackleParams: {
                     count: Math.floor(rand(5, 15)),
-                    speed: rand(1, 3),
+                    speed: rand(1, 3) * scale,
                     lifespan: rand(10, 30),
-                    size: rand(0.5, 1.5)
+                    size: rand(0.5, 1.5) * scale
                 }
             };
 
@@ -293,8 +296,8 @@
 
         // 游戏循环
         function gameLoop() {
-            // 优化背景清除，使用更薄的层产生丝滑的动态模糊
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.18)';
+            // 增加清除力度以减少残影带来的性能开销
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; // 降低背景擦除频率，让烟花留下的色彩尾迹更长、更艳丽
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
             // 1. 移除星星的更新和绘制
@@ -355,8 +358,8 @@
                 y = e.clientY;
             }
             
-            // 恢复原始的拖动发射频率
-            if (Math.random() < 0.2) { 
+            // 提高拖动发射频率
+            if (Math.random() < 0.3) { 
                  rockets.push(new Rocket(x, y));
             }
         }
