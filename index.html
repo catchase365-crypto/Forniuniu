@@ -28,36 +28,111 @@
             transform: translateZ(0); /* 强制开启GPU加速 */
         }
         
-        /* 提示文字 */
-        #infoText {
+        /* 隐藏全屏触发区域 */
+        #fullscreenTrigger {
             position: absolute;
-            bottom: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            font-size: 16px;
-            color: rgba(255, 255, 255, 0.5);
-            font-family: Arial, sans-serif;
-            pointer-events: none; /* 穿透点击 */
-            text-shadow: 0 0 5px #000;
+            top: 0;
+            left: 0;
+            width: 80px;
+            height: 80px;
+            background: transparent;
+            z-index: 9999;
+            cursor: default;
         }
     </style>
 </head>
 <body>
-
+    <div id="fullscreenTrigger"></div>
     <canvas id="fireworksCanvas"></canvas>
-    <div id="infoText">点击或拖动屏幕来释放烟花</div>
 
     <script>
         // --- 1. 初始化 ---
         const canvas = document.getElementById('fireworksCanvas');
         const ctx = canvas.getContext('2d');
-        const infoText = document.getElementById('infoText');
 
         let canvasWidth, canvasHeight;
         // 移除 stars 数组
         let rockets = [];
         let particles = [];
+        let lastLaunchTime = 0;
+        let currentEffect = 0;
         let mouse = { x: 0, y: 0, down: false };
+
+        const getPreset = (i) => {
+            const configs = [
+                // 0. 正红牡丹: 经典大红色，标准圆形
+                { baseHue: 0, hueVariance: 0, speedMin: 5, speedMax: 9, friction: 0.95, gravity: 0.1, hasTrail: true, trailDecay: 0.92, crackleChance: 0 },
+                // 1. 黄金垂柳: 金色，超长拖尾，低摩擦，像柳树一样下垂
+                { baseHue: 45, hueVariance: 5, speedMin: 6, speedMax: 12, friction: 0.92, gravity: 0.18, hasTrail: true, trailLength: 50, trailDecay: 0.96 },
+                // 2. 七彩心愿: 颜色随机，心形排列
+                { hueVariance: 180, speedMin: 4, speedMax: 10, friction: 0.96, count: 500, hasTrail: true, shape: 'heart' },
+                // 3. 雷霆霹雳: 银白色，极高闪烁和爆裂概率
+                { baseHue: 200, saturation: 10, speedMin: 8, speedMax: 15, crackleChance: 0.3, brightnessMin: 90, flicker: true },
+                // 4. 深海漩涡: 强烈的旋转效果，蓝色系
+                { baseHue: 220, hueVariance: 20, vortex: 0.4, friction: 0.94, hasTrail: true, trailLength: 15 },
+                // 5. 青蛇狂舞: 绿色，明显的S形扭动轨迹
+                { baseHue: 120, hueVariance: 10, zigzag: { f: 0.2, a: 1.5 }, friction: 0.97, speedMax: 8 },
+                // 6. 反重力场: 粒子向上飘浮，紫色
+                { baseHue: 280, gravity: -0.08, friction: 0.98, speedMin: 2, speedMax: 6, lifespan: 200 },
+                // 7. 幽灵频闪: 极低透明度起始，疯狂闪烁，甚至看不见
+                { baseHue: 180, flicker: true, fadeMin: 0.001, fadeMax: 0.005, speedMax: 12, hasTrail: false },
+                // 8. 凛冬暴雪: 纯白，高阻力（飘落感），大颗粒
+                { baseHue: 200, saturation: 0, size: 5, friction: 0.88, gravity: 0.03, lifespan: 250 },
+                // 9. 烈火战车: 橙红，极高初速度，极快衰减
+                { baseHue: 15, speedMin: 15, speedMax: 25, friction: 0.85, trailLength: 10 },
+                // 10. 霓虹脉冲: 青色与粉色，高饱和度
+                { baseHue: 300, hueVariance: 60, brightnessMin: 80, friction: 0.93, hasTrail: true },
+                // 11. 双色圆环: 特殊的涡流，环形发射
+                { baseHue: 0, specificColors: [0, 240], vortex: 0.2, friction: 0.96, count: 300, shape: 'ring' },
+                // 12. 星际尘埃: 极小粒子，极多数量，向四周缓慢扩散
+                { baseHue: 60, size: 1, count: 800, speedMax: 18, friction: 0.85, gravity: 0 },
+                // 13. 萤火之森: 黄绿色，超长寿命，几乎不落
+                { baseHue: 90, gravity: 0.01, friction: 0.99, lifespan: 300, zigzag: { f: 0.05, a: 0.2 } },
+                // 14. 重金属雨: 暗色调，极重引力，快速坠落
+                { baseHue: 260, brightnessMax: 60, gravity: 0.4, friction: 0.98, hasTrail: true },
+                // 15. 极速爆裂: 瞬间爆炸，瞬间消失
+                { baseHue: 30, speedMin: 20, speedMax: 30, fadeMin: 0.05, fadeMax: 0.1 },
+                // 16. 像素方块: 不使用圆形/发光，纯色块，无拖尾
+                { baseHue: 330, size: 6, hasTrail: false, friction: 0.90, crackleChance: 0.05 },
+                // 17. 仙女散花: 喷泉效果，向上的推力
+                { baseHue: 50, fountain: true, gravity: 0.1, friction: 0.96 },
+                // 18. 黑洞视界: 粒子向中心坍缩 (通过反向速度模拟或高摩擦)
+                { baseHue: 250, hueVariance: 50, friction: 0.80, speedMin: 20, speedMax: 25 },
+                // 19. 子母弹: 爆炸后产生二次爆裂
+                { baseHue: 200, count: 200, secondary: true, speedMin: 8, speedMax: 12 }
+            ];
+            
+            const cfg = configs[i] || configs[0];
+            // 默认值填充
+            return {
+                baseHue: 0,
+                hueVariance: 0,
+                saturation: 100,
+                brightnessMin: 60,
+                brightnessMax: 100,
+                speedMin: 5,
+                speedMax: 10,
+                gravity: 0.1,
+                friction: 0.95,
+                size: 3,
+                lifespan: 150,
+                vortex: 0,
+                zigzag: null,
+                fountain: false,
+                hasTrail: true,
+                trailLength: 20,
+                trailDecay: 0.94,
+                crackleChance: 0,
+                count: 350,
+                fadeMin: 0.006,
+                fadeMax: 0.012,
+                accel: 1,
+                recursive: false,
+                flicker: false,
+                crackleParams: { count: 5, speed: 1.5, lifespan: 20, size: 0.8 },
+                ...cfg
+            };
+        };
 
         // 辅助函数
         const rand = (min, max) => Math.random() * (max - min) + min;
@@ -68,7 +143,8 @@
 
         // 烟花火箭 (发射器)
         class Rocket {
-            constructor(tx, ty) {
+            constructor(tx, ty, effectId) {
+                this.effectId = effectId;
                 this.x = canvasWidth / 2; // 从底部中间发射
                 this.y = canvasHeight;
                 this.tx = tx; // 目标x
@@ -79,7 +155,7 @@
                 this.brightness = rand(50, 75); // 降低亮度以确保色彩饱和度，避免发白
                 
                 this.trail = [];
-                this.speed = rand(10, 18); // 极大提升发射速度
+                this.speed = rand(8, 14); // 略微降低速度以增强上升轨迹的观察时间
                 
                 // 计算角度和速度
                 const angle = Math.atan2(ty - this.y, tx - this.x);
@@ -93,15 +169,15 @@
                 
                 // 更新轨迹
                 this.trail.push({ x: this.x, y: this.y, opacity: 1 });
-                if (this.trail.length > 5) this.trail.shift();
+                if (this.trail.length > 25) this.trail.shift(); // 极大幅度增加火箭尾焰长度
                 
                 // 轨迹透明度衰减
-                this.trail.forEach(t => t.opacity *= 0.9);
+                this.trail.forEach(t => t.opacity *= 0.96);
 
                 // 到达目标点 (或飞过目标点)
                 if (this.y < this.ty) {
                     // 创建爆炸
-                    createExplosion(this.tx, this.ty);
+                    createExplosion(this.tx, this.ty, this.effectId);
                     // 标记为待移除
                     return false; 
                 }
@@ -148,7 +224,7 @@
                 this.brightness = rand(params.brightnessMin, params.brightnessMax);
                 this.opacity = 1;
                 this.lifespan = params.lifespan;
-                
+                this.size = rand(params.size * 0.5, params.size * 1.5); // 每个粒子独立随机大小
                 this.trail = [];
             }
 
@@ -156,28 +232,42 @@
                 this.lifespan--;
                 if (this.lifespan <= 0) return false;
 
-                // 物理计算
+                // 动态生成的效果算法
+                if (this.params.vortex > 0) {
+                    const angle = Math.atan2(this.y - canvasHeight / 2, this.x - canvasWidth / 2);
+                    this.vx += Math.cos(angle + Math.PI / 2) * this.params.vortex;
+                    this.vy += Math.sin(angle + Math.PI / 2) * this.params.vortex;
+                }
+                if (this.params.hueDrift > 0) this.hue += this.params.hueDrift;
+                if (this.params.zigzag) {
+                    this.vx += Math.sin(this.lifespan * this.params.zigzag.f) * this.params.zigzag.a;
+                }
+                if (this.params.accel !== 1 && this.lifespan < 100) {
+                    this.vx *= this.params.accel;
+                    this.vy *= this.params.accel;
+                }
+                if (this.params.recursive && this.lifespan % 40 === 0 && this.opacity > 0.6) {
+                    createCrackle(this.x, this.y, { count: 3, speed: 1, lifespan: 15, size: 0.5 });
+                }
+                if (this.params.fountain) this.vy -= 0.15;
+                if (this.params.secondary && !this.spawned && this.lifespan === Math.floor(this.params.lifespan / 2)) {
+                    this.spawned = true;
+                    createCrackle(this.x, this.y, { count: 12, speed: 3, lifespan: 40, size: 1.5 });
+                }
+
                 this.vx *= this.params.friction;
                 this.vy *= this.params.friction;
                 this.vy += this.params.gravity;
-                
                 this.x += this.vx;
                 this.y += this.vy;
 
-                // 亮度衰减
                 this.opacity -= rand(this.params.fadeMin, this.params.fadeMax);
-                if (this.opacity < 0) this.opacity = 0;
-                
-                // 闪烁
-                if (this.params.flicker && Math.random() < 0.1) {
-                    this.brightness = rand(this.params.brightnessMin, this.params.brightnessMax);
-                }
+                if (this.params.flicker && Math.random() < 0.2) this.opacity = Math.random() > 0.5 ? 0.1 : 1;
 
-                // 轨迹
                 if (this.params.hasTrail) {
-                    this.trail.push({ x: this.x, y: this.y, opacity: this.opacity * 0.5 });
-                    if (this.trail.length > 3) this.trail.shift();
-                    this.trail.forEach(t => t.opacity *= 0.8);
+                    this.trail.push({ x: this.x, y: this.y, opacity: this.opacity });
+                    if (this.trail.length > this.params.trailLength) this.trail.shift();
+                    this.trail.forEach(t => t.opacity *= this.params.trailDecay);
                 }
 
                 // 噼啪 (Crackle)
@@ -194,7 +284,7 @@
                 if (this.params.hasTrail && this.trail.length > 0) {
                     ctx.beginPath();
                     ctx.strokeStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity * 0.3})`;
-                    ctx.lineWidth = this.params.size;
+                    ctx.lineWidth = this.size;
                     ctx.moveTo(this.trail[0].x, this.trail[0].y);
                     for(let i = 1; i < this.trail.length; i++) {
                         ctx.lineTo(this.trail[i].x, this.trail[i].y);
@@ -204,7 +294,7 @@
                 
                 // 使用fillRect替代arc提高渲染效率，并产生像素风的细腻感
                 ctx.fillStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity})`;
-                const s = this.params.size * (0.5 + Math.random() * 0.5);
+                const s = this.size * (0.5 + Math.random() * 0.5);
                 ctx.fillRect(this.x - s/2, this.y - s/2, s, s);
                 
                 ctx.globalCompositeOperation = 'source-over';
@@ -214,47 +304,42 @@
         // --- 3. 核心功能 ---
 
         // 创建一次爆炸
-        function createExplosion(x, y) {
-            // 随机爆炸规模因子 (0.4 到 1.2)，控制烟花整体大小范围
-            const scale = rand(0.4, 1.2);
+        function createExplosion(x, y, effectId) {
+            const params = getPreset(effectId);
             
-            // 增加瞬间闪光效果
-            ctx.save();
-            ctx.beginPath();
-            ctx.arc(x, y, rand(40, 80) * scale, 0, Math.PI * 2);
-            ctx.fillStyle = 'rgba(255, 255, 255, 0.2)'; 
-            ctx.fill();
-            ctx.restore();
-
-            const params = {
-                count: Math.floor(rand(80, 180) * scale), // 粒子数量随规模变化
-                baseHue: rand(0, 360),
-                hueVariance: rand(30, 60),
-                saturation: 100,
-                brightnessMin: 50, 
-                brightnessMax: 80,
-                fadeMin: 0.01, 
-                fadeMax: 0.025,
-                speedMin: 4 * scale, // 扩散速度随规模变化
-                speedMax: 16 * scale,
-                gravity: 0.12,
-                friction: 0.96,
-                size: rand(2, 4.5) * scale, // 粒子个体大小随规模变化
-                lifespan: rand(40, 90),
-                hasTrail: true,
-                flicker: true,
-                crackleChance: 0.005,
-                crackleParams: {
-                    count: Math.floor(rand(5, 15)),
-                    speed: rand(1, 3) * scale,
-                    lifespan: rand(10, 30),
-                    size: rand(0.5, 1.5) * scale
-                }
-            };
+            // 如果预设没有强制指定颜色，且不是特定双色模式，可以在这里做微调，
+            // 但为了保证20种效果区别明显，我们尽量尊重 getPreset 的配置。
+            
+            // 特殊处理：混沌模式
+            if (params.chaos) {
+                params.baseHue = rand(0, 360);
+                params.hueVariance = 180;
+                params.vortex = Math.random() > 0.5 ? 0.3 : 0;
+                params.gravity = rand(-0.05, 0.2);
+                params.friction = rand(0.9, 0.98);
+            }
 
             // 创建粒子
+            const shape = params.shape || 'sphere';
             for (let i = 0; i < params.count; i++) {
-                particles.push(new Particle(x, y, params));
+                if (params.specificColors) {
+                    params.baseHue = params.specificColors[i % params.specificColors.length];
+                    params.hueVariance = 0;
+                }
+                const p = new Particle(x, y, params);
+                const angle = (i / params.count) * Math.PI * 2;
+                const speed = rand(params.speedMin, params.speedMax);
+
+                if (shape === 'heart') {
+                    const t = angle;
+                    const tx = 16 * Math.pow(Math.sin(t), 3);
+                    const ty = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
+                    p.vx = tx * (speed / 15); p.vy = ty * (speed / 15);
+                } else if (shape === 'ring') {
+                    p.vx = Math.cos(angle) * params.speedMax;
+                    p.vy = Math.sin(angle) * params.speedMax;
+                }
+                particles.push(p);
             }
         }
         
@@ -297,7 +382,7 @@
         // 游戏循环
         function gameLoop() {
             // 增加清除力度以减少残影带来的性能开销
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.12)'; // 降低背景擦除频率，让烟花留下的色彩尾迹更长、更艳丽
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.07)'; // 显著降低擦除频率，增强长尾迹的视觉残留效果
             ctx.fillRect(0, 0, canvasWidth, canvasHeight);
 
             // 1. 移除星星的更新和绘制
@@ -320,7 +405,16 @@
                 }
             }
 
-            // 4. 请求下一帧
+            // 4. 绘制水面倒影 (垂直翻转效果)
+            ctx.save();
+            ctx.globalCompositeOperation = 'lighter';
+            ctx.setTransform(1, 0, 0, -0.3, 0, canvasHeight * 1.3);
+            ctx.globalAlpha = 0.2;
+            ctx.filter = 'blur(4px)';
+            ctx.drawImage(canvas, 0, 0);
+            ctx.restore();
+
+            // 5. 请求下一帧
             requestAnimationFrame(gameLoop);
         }
 
@@ -331,6 +425,10 @@
         
         function handleInteractionStart(e) {
             e.preventDefault();
+            const now = Date.now();
+            if (now - lastLaunchTime < 300) return;
+            
+            lastLaunchTime = now;
             mouse.down = true;
             let x, y;
             if (e.touches) {
@@ -340,33 +438,41 @@
                 x = e.clientX;
                 y = e.clientY;
             }
-            rockets.push(new Rocket(x, y));
-            // 隐藏提示
-            infoText.style.opacity = '0';
+            rockets.push(new Rocket(x, y, currentEffect));
         }
 
         function handleInteractionMove(e) {
+            // 禁用滑动发射以防止绕过冷却时间，仅保留阻止默认滚动行为
             e.preventDefault();
-            if (!mouse.down) return;
-            
-            let x, y;
-            if (e.touches) {
-                x = e.touches[0].clientX;
-                y = e.touches[0].clientY;
-            } else {
-                x = e.clientX;
-                y = e.clientY;
-            }
-            
-            // 提高拖动发射频率
-            if (Math.random() < 0.3) { 
-                 rockets.push(new Rocket(x, y));
-            }
         }
         
         function handleInteractionEnd(e) {
             e.preventDefault();
             mouse.down = false;
+        }
+
+        function startRandomMode() {
+            stopRandomMode(); // 确保只有一个定时器在运行
+            const launchRandomFirework = () => {
+                const x = rand(0, canvasWidth);
+                const y = rand(canvasHeight * 0.2, canvasHeight * 0.8); // 避免太靠近底部或顶部
+                const effectId = Math.floor(rand(0, 20)); // 随机选择20种效果之一
+                rockets.push(new Rocket(x, y, effectId));
+            };
+
+            const intervalDuration = () => rand(100, 200); // 0.5 - 1s 随机间隔
+
+            randomModeInterval = setTimeout(() => {
+                launchRandomFirework();
+                randomModeInterval = setTimeout(arguments.callee, intervalDuration()); // 递归调用以实现随机间隔
+            }, intervalDuration());
+        }
+
+        function stopRandomMode() {
+            if (randomModeInterval !== null) {
+                clearTimeout(randomModeInterval);
+                randomModeInterval = null;
+            }
         }
 
         canvas.addEventListener('mousedown', handleInteractionStart);
@@ -378,9 +484,28 @@
         canvas.addEventListener('mouseup', handleInteractionEnd);
         canvas.addEventListener('touchend', handleInteractionEnd);
 
+        let randomModeInterval = null;
+
+        // 全屏切换与随机模式联动
+        const trigger = document.getElementById('fullscreenTrigger');
+        trigger.addEventListener('click', () => {
+            if (!document.fullscreenElement) {
+                document.documentElement.requestFullscreen().catch(() => {});
+            } else {
+                document.exitFullscreen();
+            }
+        });
+
+        document.addEventListener('fullscreenchange', () => {
+            if (document.fullscreenElement) {
+                startRandomMode();
+            } else {
+                stopRandomMode();
+            }
+        });
+
         // --- 5. 游戏启动 ---
         setCanvasSize();
-        // 移除创建星星的循环
         gameLoop();
 
     </script>
