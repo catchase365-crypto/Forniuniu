@@ -57,79 +57,64 @@
         let lastLaunchTime = 0;
         let currentEffect = 0;
         let mouse = { x: 0, y: 0, down: false };
+        let wind = 0;
+        let windTarget = 0;
+        let shakeIntensity = 0;
 
         const getPreset = (i) => {
+            const h = rand(0, 360); // 每次调用生成全新的随机主色调
             const configs = [
-                // 0. 正红牡丹: 经典大红色，标准圆形
-                { baseHue: 0, hueVariance: 0, speedMin: 5, speedMax: 9, friction: 0.95, gravity: 0.1, hasTrail: true, trailDecay: 0.92, crackleChance: 0 },
-                // 1. 黄金垂柳: 金色，超长拖尾，低摩擦，像柳树一样下垂
-                { baseHue: 45, hueVariance: 5, speedMin: 6, speedMax: 12, friction: 0.92, gravity: 0.18, hasTrail: true, trailLength: 50, trailDecay: 0.96 },
-                // 2. 七彩心愿: 颜色随机，心形排列
-                { hueVariance: 180, speedMin: 4, speedMax: 10, friction: 0.96, count: 500, hasTrail: true, shape: 'heart' },
-                // 3. 雷霆霹雳: 银白色，极高闪烁和爆裂概率
-                { baseHue: 200, saturation: 10, speedMin: 8, speedMax: 15, crackleChance: 0.3, brightnessMin: 90, flicker: true },
-                // 4. 深海漩涡: 强烈的旋转效果，蓝色系
-                { baseHue: 220, hueVariance: 20, vortex: 0.4, friction: 0.94, hasTrail: true, trailLength: 15 },
-                // 5. 青蛇狂舞: 绿色，明显的S形扭动轨迹
-                { baseHue: 120, hueVariance: 10, zigzag: { f: 0.2, a: 1.5 }, friction: 0.97, speedMax: 8 },
-                // 6. 反重力场: 粒子向上飘浮，紫色
-                { baseHue: 280, gravity: -0.08, friction: 0.98, speedMin: 2, speedMax: 6, lifespan: 200 },
-                // 7. 幽灵频闪: 极低透明度起始，疯狂闪烁，甚至看不见
-                { baseHue: 180, flicker: true, fadeMin: 0.001, fadeMax: 0.005, speedMax: 12, hasTrail: false },
-                // 8. 凛冬暴雪: 纯白，高阻力（飘落感），大颗粒
-                { baseHue: 200, saturation: 0, size: 5, friction: 0.88, gravity: 0.03, lifespan: 250 },
-                // 9. 烈火战车: 橙红，极高初速度，极快衰减
-                { baseHue: 15, speedMin: 15, speedMax: 25, friction: 0.85, trailLength: 10 },
-                // 10. 霓虹脉冲: 青色与粉色，高饱和度
-                { baseHue: 300, hueVariance: 60, brightnessMin: 80, friction: 0.93, hasTrail: true },
-                // 11. 双色圆环: 特殊的涡流，环形发射
-                { baseHue: 0, specificColors: [0, 240], vortex: 0.2, friction: 0.96, count: 300, shape: 'ring' },
-                // 12. 星际尘埃: 极小粒子，极多数量，向四周缓慢扩散
-                { baseHue: 60, size: 1, count: 800, speedMax: 18, friction: 0.85, gravity: 0 },
-                // 13. 萤火之森: 黄绿色，超长寿命，几乎不落
-                { baseHue: 90, gravity: 0.01, friction: 0.99, lifespan: 300, zigzag: { f: 0.05, a: 0.2 } },
-                // 14. 重金属雨: 暗色调，极重引力，快速坠落
-                { baseHue: 260, brightnessMax: 60, gravity: 0.4, friction: 0.98, hasTrail: true },
-                // 15. 极速爆裂: 瞬间爆炸，瞬间消失
-                { baseHue: 30, speedMin: 20, speedMax: 30, fadeMin: 0.05, fadeMax: 0.1 },
-                // 16. 像素方块: 不使用圆形/发光，纯色块，无拖尾
-                { baseHue: 330, size: 6, hasTrail: false, friction: 0.90, crackleChance: 0.05 },
-                // 17. 仙女散花: 喷泉效果，向上的推力
-                { baseHue: 50, fountain: true, gravity: 0.1, friction: 0.96 },
-                // 18. 黑洞视界: 粒子向中心坍缩 (通过反向速度模拟或高摩擦)
-                { baseHue: 250, hueVariance: 50, friction: 0.80, speedMin: 20, speedMax: 25 },
-                // 19. 子母弹: 爆炸后产生二次爆裂
-                { baseHue: 200, count: 200, secondary: true, speedMin: 8, speedMax: 12 }
+                { baseHue: h, hueVariance: rand(20, 50), speedMin: rand(4, 6), speedMax: rand(8, 11), friction: 0.95 },
+                { baseHue: h, hueVariance: rand(5, 15), speedMin: rand(6, 8), speedMax: rand(11, 14), gravity: rand(0.15, 0.22), trailLength: rand(40, 60), brightnessMin: 80 },
+                { baseHue: h, hueVariance: 180, speedMin: rand(3, 5), speedMax: rand(8, 12), count: rand(400, 600), shape: 'heart' },
+                { baseHue: h, saturation: rand(50, 70), hueVariance: 40, speedMin: rand(8, 10), speedMax: rand(14, 18), crackleChance: rand(0.2, 0.4), flicker: true },
+                { baseHue: h, speedMin: 15, speedMax: 25, friction: 0.8, lifespan: 80, hasTrail: false, count: 250 }, // 快速径向瞬闪
+                { baseHue: h, speedMin: 12, speedMax: 18, friction: 0.85, trailLength: 3, count: 400 }, // 密集短促火花
+                { baseHue: h, gravity: rand(-0.1, -0.05), lifespan: rand(180, 250) },
+                { baseHue: h, flicker: true, fadeMin: 0.001, fadeMax: 0.008, speedMax: rand(10, 15) },
+                { baseHue: h, saturation: rand(0, 100), size: rand(4, 7), friction: 0.88, gravity: 0.03, lifespan: rand(200, 300) },
+                { baseHue: h, speedMin: rand(15, 20), speedMax: rand(25, 35), friction: rand(0.82, 0.88) },
+                { baseHue: h, hueVariance: rand(40, 100), brightnessMin: 85, hasTrail: true },
+                { specificColors: [h, (h + 120) % 360, (h + 240) % 360], speedMin: 10, speedMax: 15, friction: 0.9, count: 500, trailLength: 5, shape: 'sphere' }, // 高亮三色瞬爆球
+                { baseHue: h, size: rand(0.5, 1.5), count: rand(700, 1000), speedMax: rand(15, 22), friction: 0.85 },
+                { baseHue: h, speedMin: 15, speedMax: 22, friction: 0.82, count: 350, hasTrail: false, flicker: true, lifespan: 100 }, // 频闪炸裂
+                { baseHue: h, brightnessMax: 90, gravity: rand(0.3, 0.5), friction: 0.98 },
+                { baseHue: h, speedMin: rand(20, 25), speedMax: rand(30, 40), fadeMin: 0.06, fadeMax: 0.12 },
+                { baseHue: h, size: rand(5, 10), friction: rand(0.88, 0.92), crackleChance: 0.08 },
+                { baseHue: h, fountain: true, gravity: rand(0.08, 0.12) },
+                { baseHue: h, hueVariance: 80, friction: rand(0.75, 0.85), speedMin: 20, speedMax: 30 },
+                { baseHue: h, secondary: true, speedMin: 7, speedMax: 13, count: rand(180, 250) }
             ];
             
             const cfg = configs[i] || configs[0];
-            // 默认值填充
+            // 默认值填充 (加入全局随机扰动确保不重复)
+            const varScale = rand(0.8, 1.3);
             return {
-                baseHue: 0,
-                hueVariance: 0,
-                saturation: 100,
-                brightnessMin: 60,
-                brightnessMax: 100,
-                speedMin: 5,
-                speedMax: 10,
-                gravity: 0.1,
-                friction: 0.95,
-                size: 3,
-                lifespan: 150,
+                baseHue: h,
+                hueVariance: rand(30, 90),
+                saturation: rand(45, 75), // 中等饱和度，使色彩更自然
+                brightnessMin: rand(45, 60), // 降低亮度，避免过亮发白
+                brightnessMax: rand(65, 80),
+                speedMin: 5 * varScale,
+                speedMax: 10 * varScale,
+                gravity: 0.1 * varScale,
+                friction: rand(0.93, 0.97),
+                size: rand(2, 4) * varScale,
+                lifespan: rand(120, 180),
                 vortex: 0,
                 zigzag: null,
                 fountain: false,
                 hasTrail: true,
-                trailLength: 20,
-                trailDecay: 0.94,
+                trailLength: Math.floor(20 * varScale),
+                trailDecay: rand(0.92, 0.96),
                 crackleChance: 0,
-                count: 350,
+                count: Math.floor(rand(300, 450)),
                 fadeMin: 0.006,
                 fadeMax: 0.012,
                 accel: 1,
                 recursive: false,
                 flicker: false,
-                crackleParams: { count: 5, speed: 1.5, lifespan: 20, size: 0.8 },
+                crackleParams: { count: rand(3, 7), speed: rand(1, 2), lifespan: rand(15, 25), size: rand(0.5, 1.2) },
                 ...cfg
             };
         };
@@ -151,8 +136,7 @@
                 this.ty = ty; // 目标y
                 
                 this.hue = rand(0, 360);
-                // OLED 优化: 极大提升亮度
-                this.brightness = rand(50, 75); // 降低亮度以确保色彩饱和度，避免发白
+                this.brightness = rand(45, 65);
                 
                 this.trail = [];
                 this.speed = rand(8, 14); // 略微降低速度以增强上升轨迹的观察时间
@@ -193,13 +177,13 @@
                     for(let i = this.trail.length - 2; i >= 0; i--) {
                         ctx.lineTo(this.trail[i].x, this.trail[i].y);
                     }
-                    ctx.strokeStyle = `hsla(${this.hue}, 100%, ${this.brightness}%, ${this.trail[0].opacity})`;
+                    ctx.strokeStyle = `hsla(${this.hue}, 65%, ${this.brightness}%, ${this.trail[0].opacity})`;
                     ctx.lineWidth = 2;
                     ctx.stroke();
                 }
                 
                 // 画火箭头
-                ctx.fillStyle = `hsl(${this.hue}, 100%, ${this.brightness}%)`;
+                ctx.fillStyle = `hsl(${this.hue}, 65%, ${this.brightness}%)`;
                 ctx.beginPath();
                 ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
                 ctx.fill();
@@ -257,6 +241,7 @@
 
                 this.vx *= this.params.friction;
                 this.vy *= this.params.friction;
+                this.vx += wind; // 引入环境风场影响
                 this.vy += this.params.gravity;
                 this.x += this.vx;
                 this.y += this.vy;
@@ -306,6 +291,14 @@
         // 创建一次爆炸
         function createExplosion(x, y, effectId) {
             const params = getPreset(effectId);
+            // 每一次爆炸都对规模进行二次随机微调
+            const intensityScale = rand(0.7, 1.5);
+            params.count = Math.floor(params.count * intensityScale);
+            params.speedMin *= intensityScale;
+            params.speedMax *= intensityScale;
+
+            // 触发动态镜头震动
+            shakeIntensity = Math.min(shakeIntensity + (params.count / 200), 5); // 大幅减小抖动增量与最大上限，使其更接近真实的空气震荡感
             
             // 如果预设没有强制指定颜色，且不是特定双色模式，可以在这里做微调，
             // 但为了保证20种效果区别明显，我们尽量尊重 getPreset 的配置。
@@ -347,12 +340,11 @@
         function createCrackle(x, y, crackleParams) {
              // 噼啪效果通常是明亮的白色或金色
             const crackleBaseParams = {
-                baseHue: 0, 
-                hueVariance: 0,
-                saturation: 0, // 白色
-                // OLED 优化: 提升噼啪亮度
-                brightnessMin: 95, // 原 90
-                brightnessMax: 100,
+                baseHue: rand(0, 360), 
+                hueVariance: 20,
+                saturation: rand(30, 60),
+                brightnessMin: 60,
+                brightnessMax: 85,
                 fadeMin: 0.05,
                 fadeMax: 0.1,
                 speedMin: crackleParams.speed,
@@ -381,20 +373,26 @@
 
         // 游戏循环
         function gameLoop() {
+            // 环境风场动态更新
+            wind += (windTarget - wind) * 0.005;
+            if (Math.random() < 0.01) windTarget = rand(-0.06, 0.06);
+
             // 增加清除力度以减少残影带来的性能开销
+            ctx.save();
+            if (shakeIntensity > 0) {
+                // 随机位移模拟相机抖动
+                ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
+                shakeIntensity *= 0.85; // 加快衰减速度，让震动感变得短促且有力，不再产生晕眩感
+                if (shakeIntensity < 0.1) shakeIntensity = 0;
+            }
+
             ctx.fillStyle = 'rgba(0, 0, 0, 0.07)'; // 显著降低擦除频率，增强长尾迹的视觉残留效果
-            ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+            // 扩大填充区域防止抖动时边缘露白
+            ctx.fillRect(-50, -50, canvasWidth + 100, canvasHeight + 100);
 
             // 1. 移除星星的更新和绘制
 
-            // 2. 更新和绘制火箭
-            for (let i = rockets.length - 1; i >= 0; i--) {
-                if (!rockets[i].update()) {
-                    rockets.splice(i, 1);
-                } else {
-                    rockets[i].draw();
-                }
-            }
+            // 2. 移除火箭处理逻辑 (已改为直接触发爆炸)
             
             // 3. 更新和绘制粒子
             for (let i = particles.length - 1; i >= 0; i--) {
@@ -412,6 +410,8 @@
             ctx.globalAlpha = 0.2;
             ctx.filter = 'blur(4px)';
             ctx.drawImage(canvas, 0, 0);
+            ctx.restore();
+
             ctx.restore();
 
             // 5. 请求下一帧
@@ -438,7 +438,7 @@
                 x = e.clientX;
                 y = e.clientY;
             }
-            rockets.push(new Rocket(x, y, currentEffect));
+            createExplosion(x, y, currentEffect);
         }
 
         function handleInteractionMove(e) {
@@ -452,15 +452,16 @@
         }
 
         function startRandomMode() {
-            stopRandomMode(); // 确保只有一个定时器在运行
+            stopRandomMode();
             const launchRandomFirework = () => {
-                const x = rand(0, canvasWidth);
-                const y = rand(canvasHeight * 0.2, canvasHeight * 0.8); // 避免太靠近底部或顶部
-                const effectId = Math.floor(rand(0, 20)); // 随机选择20种效果之一
-                rockets.push(new Rocket(x, y, effectId));
+                // 限制在居中长方形区域 (横向 20%-80%, 纵向 20%-70%)
+                const x = rand(canvasWidth * 0.2, canvasWidth * 0.8);
+                const y = rand(canvasHeight * 0.2, canvasHeight * 0.7);
+                const effectId = Math.floor(rand(0, 20));
+                createExplosion(x, y, effectId); // 直接炸开，去掉飞行过程
             };
 
-            const intervalDuration = () => rand(100, 200); // 0.5 - 1s 随机间隔
+            const intervalDuration = () => rand(300, 500); // 0.5 - 1s 随机间隔
 
             randomModeInterval = setTimeout(() => {
                 launchRandomFirework();
