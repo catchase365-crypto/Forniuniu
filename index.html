@@ -1,515 +1,304 @@
 <!DOCTYPE html>
-<html lang="zh">
+<html lang="zh-CN">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
-    <title>OLED 烟花模拟器 (高亮版)</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>GitHub 托管分流版</title>
     <style>
-        /* 基础页面样式 */
-        body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden; /* 隐藏滚动条 */
-            background-color: #000; /* 纯黑夜空 */
-        }
-
-        /* 游戏画布 */
-        #fireworksCanvas {
-            display: block;
-            width: 100%;
-            height: 100%;
-            background-color: #000;
-            touch-action: none;
-            cursor: crosshair;
-            image-rendering: -webkit-optimize-contrast;
-            will-change: transform;
-            transform: translateZ(0); /* 强制开启GPU加速 */
-        }
-        
-        /* 隐藏全屏触发区域 */
-        #fullscreenTrigger {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 80px;
-            height: 80px;
-            background: transparent;
-            z-index: 9999;
-            cursor: default;
-        }
+        body { font-family: "Inter", -apple-system, sans-serif; padding: 15px; background: radial-gradient(circle at top, #1c1c1e 0%, #0a0a0a 100%); color: #d1d1d6; min-height: 100vh; }
+        .card { background: rgba(28, 28, 32, 0.85); padding: 20px; border-radius: 16px; border: 1px solid #3a3a3c; box-shadow: 0 8px 32px rgba(0,0,0,0.6); max-width: 500px; margin: 0 auto 15px; backdrop-filter: blur(10px); }
+        .section-title { font-size: 0.9rem; font-weight: 600; color: #ffb7c5; margin-bottom: 15px; display: flex; align-items: center; text-transform: uppercase; letter-spacing: 1px; }
+        .section-title::before { content: ""; width: 4px; height: 18px; background: #ffb7c5; margin-right: 10px; box-shadow: 0 0 10px #ffb7c5; border-radius: 2px; }
+        label { font-size: 11px; color: #c08e9b; text-transform: uppercase; letter-spacing: 0.5px; }
+        input, select { width: 100%; padding: 12px; margin: 8px 0 15px; border: 1px solid #3a3a3c; border-radius: 8px; box-sizing: border-box; font-size: 14px; background: #000000; color: #ffffff; }
+        button { width: 100%; padding: 14px; border: none; border-radius: 8px; font-weight: bold; cursor: pointer; font-size: 15px; transition: 0.2s; }
+        .btn-update { background: #d44d70; color: white; } /* 樱花红-更新 */
+        .btn-create { background: #8e4483; color: white; } /* 暮色紫-新建 */
+        .btn-danger { background: #a33b3b; color: #fcc; } /* 灰红-删除 */
+        .btn-fetch { background: #4a2d38; color: #ffb7c5; font-size: 13px; margin-bottom: 10px; border: 1px solid #5a3341; }
+        #status { position: fixed; bottom: 20px; left: 20px; right: 20px; padding: 16px; border-radius: 8px; font-size: 14px; display: none; z-index: 100; text-align: center; border: 1px solid rgba(255,255,255,0.1); backdrop-filter: blur(10px); }
+        .loading { background: rgba(28, 28, 30, 0.9); color: #ffd60a; border-color: #ffd60a; }
+        .success { background: rgba(28, 28, 30, 0.9); color: #32d74b; border-color: #32d74b; }
+        .error { background: rgba(28, 28, 30, 0.9); color: #ff453a; border-color: #ff453a; }
+        .user-profile { display: flex; align-items: center; gap: 12px; margin-bottom: 15px; padding: 15px; background: rgba(28, 28, 32, 0.85); border-radius: 16px; border: 1px solid #3a3a3c; max-width: 500px; margin: 0 auto 15px; backdrop-filter: blur(8px); }
+        .user-profile img { width: 44px; height: 44px; border-radius: 50%; border: 2px solid #ffb7c5; box-shadow: 0 0 12px rgba(255, 183, 197, 0.4); }
+        .user-info div { font-size: 15px; font-weight: 600; color: #ffffff; }
+        .user-info span { font-size: 11px; color: #8e8e93; display: block; margin-top: 2px; }
     </style>
 </head>
 <body>
-    <div id="fullscreenTrigger"></div>
-    <canvas id="fireworksCanvas"></canvas>
 
-    <script>
-        // --- 1. 初始化 ---
-        const canvas = document.getElementById('fireworksCanvas');
-        const ctx = canvas.getContext('2d');
+<div id="userProfile" class="user-profile" style="display:none;">
+    <img id="userAvatar" src="" alt="avatar">
+    <div class="user-info">
+        <div id="userName">Loading...</div>
+        <span id="userQuota">检测中...</span>
+    </div>
+</div>
 
-        let canvasWidth, canvasHeight;
-        // 移除 stars 数组
-        let rockets = [];
-        let particles = [];
-        let lastLaunchTime = 0;
-        let currentEffect = 0;
-        let mouse = { x: 0, y: 0, down: false };
-        let wind = 0;
-        let windTarget = 0;
-        let shakeIntensity = 0;
+<div class="card">
+    <label>1. 我的 GitHub Token (自动保存)</label>
+    <input type="password" id="token" placeholder="粘贴 ghp_ 开头的密钥" onchange="saveToken()">
+    <input type="file" id="fileInput" accept=".html">
+    <p style="font-size: 11px; color: red; margin: 0;">* 先选文件，再选操作</p>
+</div>
 
-        const getPreset = (i) => {
-            const h = rand(0, 360); // 每次调用生成全新的随机主色调
-            const configs = [
-                { baseHue: h, hueVariance: rand(20, 50), speedMin: rand(4, 6), speedMax: rand(8, 11), friction: 0.95 },
-                { baseHue: h, hueVariance: rand(5, 15), speedMin: rand(6, 8), speedMax: rand(11, 14), gravity: rand(0.15, 0.22), trailLength: rand(40, 60), brightnessMin: 80 },
-                { baseHue: h, hueVariance: 180, speedMin: rand(3, 5), speedMax: rand(8, 12), count: rand(400, 600), shape: 'heart' },
-                { baseHue: h, saturation: rand(50, 70), hueVariance: 40, speedMin: rand(8, 10), speedMax: rand(14, 18), crackleChance: rand(0.2, 0.4), flicker: true },
-                { baseHue: h, speedMin: 15, speedMax: 25, friction: 0.8, lifespan: 80, hasTrail: false, count: 250 }, // 快速径向瞬闪
-                { baseHue: h, speedMin: 12, speedMax: 18, friction: 0.85, trailLength: 3, count: 400 }, // 密集短促火花
-                { baseHue: h, gravity: rand(-0.1, -0.05), lifespan: rand(180, 250) },
-                { baseHue: h, flicker: true, fadeMin: 0.001, fadeMax: 0.008, speedMax: rand(10, 15) },
-                { baseHue: h, saturation: rand(0, 100), size: rand(4, 7), friction: 0.88, gravity: 0.03, lifespan: rand(200, 300) },
-                { baseHue: h, speedMin: rand(15, 20), speedMax: rand(25, 35), friction: rand(0.82, 0.88) },
-                { baseHue: h, hueVariance: rand(40, 100), brightnessMin: 85, hasTrail: true },
-                { specificColors: [h, (h + 120) % 360, (h + 240) % 360], speedMin: 10, speedMax: 15, friction: 0.9, count: 500, trailLength: 5, shape: 'sphere' }, // 高亮三色瞬爆球
-                { baseHue: h, size: rand(0.5, 1.5), count: rand(700, 1000), speedMax: rand(15, 22), friction: 0.85 },
-                { baseHue: h, speedMin: 15, speedMax: 22, friction: 0.82, count: 350, hasTrail: false, flicker: true, lifespan: 100 }, // 频闪炸裂
-                { baseHue: h, brightnessMax: 90, gravity: rand(0.3, 0.5), friction: 0.98 },
-                { baseHue: h, speedMin: rand(20, 25), speedMax: rand(30, 40), fadeMin: 0.06, fadeMax: 0.12 },
-                { baseHue: h, size: rand(5, 10), friction: rand(0.88, 0.92), crackleChance: 0.08 },
-                { baseHue: h, fountain: true, gravity: rand(0.08, 0.12) },
-                { baseHue: h, hueVariance: 80, friction: rand(0.75, 0.85), speedMin: 20, speedMax: 30 },
-                { baseHue: h, secondary: true, speedMin: 7, speedMax: 13, count: rand(180, 250) }
-            ];
-            
-            const cfg = configs[i] || configs[0];
-            // 默认值填充 (加入全局随机扰动确保不重复)
-            const varScale = rand(0.8, 1.3);
-            return {
-                baseHue: h,
-                hueVariance: rand(30, 90),
-                saturation: rand(45, 75), // 中等饱和度，使色彩更自然
-                brightnessMin: rand(45, 60), // 降低亮度，避免过亮发白
-                brightnessMax: rand(65, 80),
-                speedMin: 5 * varScale,
-                speedMax: 10 * varScale,
-                gravity: 0.1 * varScale,
-                friction: rand(0.93, 0.97),
-                size: rand(2, 4) * varScale,
-                lifespan: rand(120, 180),
-                vortex: 0,
-                zigzag: null,
-                fountain: false,
-                hasTrail: true,
-                trailLength: Math.floor(20 * varScale),
-                trailDecay: rand(0.92, 0.96),
-                crackleChance: 0,
-                count: Math.floor(rand(300, 450)),
-                fadeMin: 0.006,
-                fadeMax: 0.012,
-                accel: 1,
-                recursive: false,
-                flicker: false,
-                crackleParams: { count: rand(3, 7), speed: rand(1, 2), lifespan: rand(15, 25), size: rand(0.5, 1.2) },
-                ...cfg
-            };
+<div class="card">
+    <div class="section-title">方案 A：更新已有仓库</div>
+    <button class="btn-fetch" onclick="fetchRepos()">刷新已有仓库列表 🔄</button>
+    <select id="repoSelect">
+        <option value="">-- 选择仓库 --</option>
+    </select>
+    <button class="btn-update" onclick="if(confirm('确定要覆盖并同步此仓库的 index.html 吗？')) handleUpdate()">覆盖并同步 Pages</button>
+    <button class="btn-fetch" style="background:#2d1b22; color:#ffb7c5; border: 1px solid #d44d70; margin-top:10px;" onclick="openLiveSite()">🌐 访问对应网页</button>
+    <button class="btn-fetch" style="background:#2d1b22; color:#ffb7c5; border: 1px solid #d44d70; margin-top:10px;" onclick="openRepoUrl()">📂 打开 GitHub 仓库</button>
+
+    <button class="btn-fetch" style="background:#2d1b22; color:#f8bbd0; border: 1px solid #8e4483; margin-top:10px;" onclick="downloadIndex()">📥 下载当前 index.html</button>
+    <button class="btn-fetch" style="background:#1a237e; color:#c5cae9; border: 1px solid #3f51b5; margin-top:10px;" onclick="handleRename()">✏️ 修改仓库名 (同步更改网址后缀)</button>
+    <button class="btn-danger" style="margin-top:10px;" onclick="handleDelete()">🗑️ 彻底删除该仓库</button>
+</div>
+
+<div class="card">
+    <div class="section-title">方案 B：新建仓库托管</div>
+    <label>输入新仓库名称 (英文)</label>
+    <input type="text" id="newRepoName" placeholder="例如: my-new-web">
+    <button class="btn-create" onclick="if(confirm('确定要创建新仓库并开始部署吗？')) handleCreate()">一键创建+托管</button>
+</div>
+
+<div id="status"></div>
+
+<script>
+    const log = (msg, type) => {
+        const s = document.getElementById('status');
+        s.style.display = 'block';
+        s.innerText = msg;
+        s.className = type;
+        if(type === 'success') setTimeout(()=>s.style.display='none', 5000);
+    };
+
+    const saveToken = () => {
+        localStorage.setItem('gh_token', document.getElementById('token').value);
+        if(document.getElementById('token').value) fetchUserInfo();
+    };
+
+    window.onload = () => {
+        const token = localStorage.getItem('gh_token') || '';
+        document.getElementById('token').value = token;
+        if(token) fetchUserInfo();
+    };
+
+    async function fetchUserInfo() {
+        try {
+            const res = await ghFetch('https://api.github.com/user');
+            if (!res.ok) throw new Error("Token 无效或已过期");
+            const data = await res.json();
+            document.getElementById('userProfile').style.display = 'flex';
+            document.getElementById('userAvatar').src = data.avatar_url;
+            document.getElementById('userName').innerText = data.login + (data.name ? ` (${data.name})` : '');
+            const storage = (data.disk_usage / 1024).toFixed(2);
+            document.getElementById('userQuota').innerText = `仓库: ${data.public_repos}公开 / ${data.total_private_repos || 0}私有 | 占用: ${storage} MB`;
+            log("Token 验证成功", "success");
+            fetchRepos();
+        } catch(e) {
+            document.getElementById('userProfile').style.display = 'none';
+            log(e.message, "error");
+        }
+    }
+
+    async function ghFetch(url, method = 'GET', body = null) {
+        const token = document.getElementById('token').value;
+        const opts = {
+            method,
+            headers: {
+                'Authorization': `token ${token}`,
+                'Accept': 'application/vnd.github.v3+json'
+            }
         };
-
-        // 辅助函数
-        const rand = (min, max) => Math.random() * (max - min) + min;
-
-        // --- 2. 实体类定义 ---
-
-        // 移除 Star 类
-
-        // 烟花火箭 (发射器)
-        class Rocket {
-            constructor(tx, ty, effectId) {
-                this.effectId = effectId;
-                this.x = canvasWidth / 2; // 从底部中间发射
-                this.y = canvasHeight;
-                this.tx = tx; // 目标x
-                this.ty = ty; // 目标y
-                
-                this.hue = rand(0, 360);
-                this.brightness = rand(45, 65);
-                
-                this.trail = [];
-                this.speed = rand(8, 14); // 略微降低速度以增强上升轨迹的观察时间
-                
-                // 计算角度和速度
-                const angle = Math.atan2(ty - this.y, tx - this.x);
-                this.vx = Math.cos(angle) * this.speed;
-                this.vy = Math.sin(angle) * this.speed;
-            }
-
-            update() {
-                this.x += this.vx;
-                this.y += this.vy;
-                
-                // 更新轨迹
-                this.trail.push({ x: this.x, y: this.y, opacity: 1 });
-                if (this.trail.length > 25) this.trail.shift(); // 极大幅度增加火箭尾焰长度
-                
-                // 轨迹透明度衰减
-                this.trail.forEach(t => t.opacity *= 0.96);
-
-                // 到达目标点 (或飞过目标点)
-                if (this.y < this.ty) {
-                    // 创建爆炸
-                    createExplosion(this.tx, this.ty, this.effectId);
-                    // 标记为待移除
-                    return false; 
-                }
-                return true;
-            }
-
-            draw() {
-                ctx.beginPath();
-                // 画轨迹
-                if (this.trail.length > 0) {
-                    const last = this.trail[this.trail.length - 1];
-                    ctx.moveTo(last.x, last.y);
-                    for(let i = this.trail.length - 2; i >= 0; i--) {
-                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
-                    }
-                    ctx.strokeStyle = `hsla(${this.hue}, 65%, ${this.brightness}%, ${this.trail[0].opacity})`;
-                    ctx.lineWidth = 2;
-                    ctx.stroke();
-                }
-                
-                // 画火箭头
-                ctx.fillStyle = `hsl(${this.hue}, 65%, ${this.brightness}%)`;
-                ctx.beginPath();
-                ctx.arc(this.x, this.y, 2, 0, Math.PI * 2);
-                ctx.fill();
-            }
+        if (body) {
+            opts.headers['Content-Type'] = 'application/json';
+            opts.body = JSON.stringify(body);
         }
+        return fetch(url, opts);
+    }
 
-        // 爆炸粒子
-        class Particle {
-            constructor(x, y, params) {
-                this.x = x;
-                this.y = y;
-                this.params = params; // 继承爆炸的所有随机参数
-                
-                // 基于爆炸参数，再次随机化每个粒子
-                const angle = rand(0, Math.PI * 2);
-                const speed = rand(params.speedMin, params.speedMax);
-                
-                this.vx = Math.cos(angle) * speed;
-                this.vy = Math.sin(angle) * speed;
-                
-                this.hue = rand(params.baseHue - params.hueVariance, params.baseHue + params.hueVariance);
-                this.brightness = rand(params.brightnessMin, params.brightnessMax);
-                this.opacity = 1;
-                this.lifespan = params.lifespan;
-                this.size = rand(params.size * 0.5, params.size * 1.5); // 每个粒子独立随机大小
-                this.trail = [];
-            }
+    // 打开 GitHub 仓库地址
+    function openRepoUrl() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请先选择一个仓库");
+        window.open(`https://github.com/${repo}`, '_blank');
+    }
 
-            update() {
-                this.lifespan--;
-                if (this.lifespan <= 0) return false;
+    // 跳转到 Pages 页面
+    function openLiveSite() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请先选择一个仓库");
+        const [user, name] = repo.split('/');
+        // 检查是否是特殊主页仓库 (user.github.io)
+        const url = name.toLowerCase() === `${user.toLowerCase()}.github.io` 
+            ? `https://${user}.github.io/` 
+            : `https://${user}.github.io/${name}/`;
+        window.open(url, '_blank');
+    }
 
-                // 动态生成的效果算法
-                if (this.params.vortex > 0) {
-                    const angle = Math.atan2(this.y - canvasHeight / 2, this.x - canvasWidth / 2);
-                    this.vx += Math.cos(angle + Math.PI / 2) * this.params.vortex;
-                    this.vy += Math.sin(angle + Math.PI / 2) * this.params.vortex;
-                }
-                if (this.params.hueDrift > 0) this.hue += this.params.hueDrift;
-                if (this.params.zigzag) {
-                    this.vx += Math.sin(this.lifespan * this.params.zigzag.f) * this.params.zigzag.a;
-                }
-                if (this.params.accel !== 1 && this.lifespan < 100) {
-                    this.vx *= this.params.accel;
-                    this.vy *= this.params.accel;
-                }
-                if (this.params.recursive && this.lifespan % 40 === 0 && this.opacity > 0.6) {
-                    createCrackle(this.x, this.y, { count: 3, speed: 1, lifespan: 15, size: 0.5 });
-                }
-                if (this.params.fountain) this.vy -= 0.15;
-                if (this.params.secondary && !this.spawned && this.lifespan === Math.floor(this.params.lifespan / 2)) {
-                    this.spawned = true;
-                    createCrackle(this.x, this.y, { count: 12, speed: 3, lifespan: 40, size: 1.5 });
-                }
+    // 刷新列表
+    async function fetchRepos() {
+        try {
+            const res = await ghFetch('https://api.github.com/user/repos?per_page=100&sort=updated');
+            const repos = await res.json();
+            const select = document.getElementById('repoSelect');
+            select.innerHTML = '<option value="">-- 选择仓库 --</option>';
+            repos.forEach(r => {
+                const opt = document.createElement('option');
+                opt.value = r.full_name;
+                opt.innerText = r.name;
+                select.appendChild(opt);
+            });
+        } catch(e) { log("列表刷新失败", "error"); }
+    }
 
-                this.vx *= this.params.friction;
-                this.vy *= this.params.friction;
-                this.vx += wind; // 引入环境风场影响
-                this.vy += this.params.gravity;
-                this.x += this.vx;
-                this.y += this.vy;
-
-                this.opacity -= rand(this.params.fadeMin, this.params.fadeMax);
-                if (this.params.flicker && Math.random() < 0.2) this.opacity = Math.random() > 0.5 ? 0.1 : 1;
-
-                if (this.params.hasTrail) {
-                    this.trail.push({ x: this.x, y: this.y, opacity: this.opacity });
-                    if (this.trail.length > this.params.trailLength) this.trail.shift();
-                    this.trail.forEach(t => t.opacity *= this.params.trailDecay);
-                }
-
-                // 噼啪 (Crackle)
-                if (Math.random() < this.params.crackleChance) {
-                    createCrackle(this.x, this.y, this.params.crackleParams);
-                }
-                
-                return this.opacity > 0;
-            }
-
-            draw() {
-                ctx.globalCompositeOperation = 'lighter'; // 使用滤色模式增加发光感
-                
-                if (this.params.hasTrail && this.trail.length > 0) {
-                    ctx.beginPath();
-                    ctx.strokeStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity * 0.3})`;
-                    ctx.lineWidth = this.size;
-                    ctx.moveTo(this.trail[0].x, this.trail[0].y);
-                    for(let i = 1; i < this.trail.length; i++) {
-                        ctx.lineTo(this.trail[i].x, this.trail[i].y);
-                    }
-                    ctx.stroke();
-                }
-                
-                // 使用fillRect替代arc提高渲染效率，并产生像素风的细腻感
-                ctx.fillStyle = `hsla(${this.hue}, ${this.params.saturation}%, ${this.brightness}%, ${this.opacity})`;
-                const s = this.size * (0.5 + Math.random() * 0.5);
-                ctx.fillRect(this.x - s/2, this.y - s/2, s, s);
-                
-                ctx.globalCompositeOperation = 'source-over';
-            }
-        }
-
-        // --- 3. 核心功能 ---
-
-        // 创建一次爆炸
-        function createExplosion(x, y, effectId) {
-            const params = getPreset(effectId);
-            // 每一次爆炸都对规模进行二次随机微调
-            const intensityScale = rand(0.7, 1.5);
-            params.count = Math.floor(params.count * intensityScale);
-            params.speedMin *= intensityScale;
-            params.speedMax *= intensityScale;
-
-            // 触发动态镜头震动
-            shakeIntensity = Math.min(shakeIntensity + (params.count / 200), 5); // 大幅减小抖动增量与最大上限，使其更接近真实的空气震荡感
-            
-            // 如果预设没有强制指定颜色，且不是特定双色模式，可以在这里做微调，
-            // 但为了保证20种效果区别明显，我们尽量尊重 getPreset 的配置。
-            
-            // 特殊处理：混沌模式
-            if (params.chaos) {
-                params.baseHue = rand(0, 360);
-                params.hueVariance = 180;
-                params.vortex = Math.random() > 0.5 ? 0.3 : 0;
-                params.gravity = rand(-0.05, 0.2);
-                params.friction = rand(0.9, 0.98);
-            }
-
-            // 创建粒子
-            const shape = params.shape || 'sphere';
-            for (let i = 0; i < params.count; i++) {
-                if (params.specificColors) {
-                    params.baseHue = params.specificColors[i % params.specificColors.length];
-                    params.hueVariance = 0;
-                }
-                const p = new Particle(x, y, params);
-                const angle = (i / params.count) * Math.PI * 2;
-                const speed = rand(params.speedMin, params.speedMax);
-
-                if (shape === 'heart') {
-                    const t = angle;
-                    const tx = 16 * Math.pow(Math.sin(t), 3);
-                    const ty = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t));
-                    p.vx = tx * (speed / 15); p.vy = ty * (speed / 15);
-                } else if (shape === 'ring') {
-                    p.vx = Math.cos(angle) * params.speedMax;
-                    p.vy = Math.sin(angle) * params.speedMax;
-                }
-                particles.push(p);
-            }
-        }
+    // 核心上传逻辑
+    async function uploadToGithub(fullPath) {
+        const fileInput = document.getElementById('fileInput');
+        if (!fileInput.files[0]) throw new Error("请先选择 HTML 文件");
         
-        // 创建噼啪 (Crackle) 效果
-        function createCrackle(x, y, crackleParams) {
-             // 噼啪效果通常是明亮的白色或金色
-            const crackleBaseParams = {
-                baseHue: rand(0, 360), 
-                hueVariance: 20,
-                saturation: rand(30, 60),
-                brightnessMin: 60,
-                brightnessMax: 85,
-                fadeMin: 0.05,
-                fadeMax: 0.1,
-                speedMin: crackleParams.speed,
-                speedMax: crackleParams.speed,
-                gravity: rand(0.01, 0.03), 
-                friction: 0.95,
-                size: crackleParams.size,
-                lifespan: crackleParams.lifespan,
-                hasTrail: false,
-                flicker: true,
-                crackleChance: 0
+        const file = fileInput.files[0];
+        const reader = new FileReader();
+        
+        return new Promise((resolve, reject) => {
+            reader.onload = async (e) => {
+                const base64 = e.target.result.split(',')[1];
+                try {
+                    const fileRes = await ghFetch(`https://api.github.com/repos/${fullPath}/contents/index.html`);
+                    let sha = null;
+                    if (fileRes.ok) sha = (await fileRes.json()).sha;
+
+                    const putRes = await ghFetch(`https://api.github.com/repos/${fullPath}/contents/index.html`, 'PUT', {
+                        message: "Upload via Mobile",
+                        content: base64,
+                        sha: sha
+                    });
+                    if (putRes.ok) resolve(); else reject(new Error("文件上传失败"));
+                } catch(err) { reject(err); }
             };
-            
-            for (let i = 0; i < crackleParams.count; i++) {
-                particles.push(new Particle(x, y, crackleBaseParams));
-            }
-        }
-
-        // 设置画布大小 (响应式)
-        function setCanvasSize() {
-            canvasWidth = window.innerWidth;
-            canvasHeight = window.innerHeight;
-            canvas.width = canvasWidth;
-            canvas.height = canvasHeight;
-        }
-
-        // 游戏循环
-        function gameLoop() {
-            // 环境风场动态更新
-            wind += (windTarget - wind) * 0.005;
-            if (Math.random() < 0.01) windTarget = rand(-0.06, 0.06);
-
-            // 增加清除力度以减少残影带来的性能开销
-            ctx.save();
-            if (shakeIntensity > 0) {
-                // 随机位移模拟相机抖动
-                ctx.translate((Math.random() - 0.5) * shakeIntensity, (Math.random() - 0.5) * shakeIntensity);
-                shakeIntensity *= 0.85; // 加快衰减速度，让震动感变得短促且有力，不再产生晕眩感
-                if (shakeIntensity < 0.1) shakeIntensity = 0;
-            }
-
-            ctx.fillStyle = 'rgba(0, 0, 0, 0.07)'; // 显著降低擦除频率，增强长尾迹的视觉残留效果
-            // 扩大填充区域防止抖动时边缘露白
-            ctx.fillRect(-50, -50, canvasWidth + 100, canvasHeight + 100);
-
-            // 1. 移除星星的更新和绘制
-
-            // 2. 移除火箭处理逻辑 (已改为直接触发爆炸)
-            
-            // 3. 更新和绘制粒子
-            for (let i = particles.length - 1; i >= 0; i--) {
-                if (!particles[i].update()) {
-                    particles.splice(i, 1);
-                } else {
-                    particles[i].draw();
-                }
-            }
-
-            // 4. 绘制水面倒影 (垂直翻转效果)
-            ctx.save();
-            ctx.globalCompositeOperation = 'lighter';
-            ctx.setTransform(1, 0, 0, -0.3, 0, canvasHeight * 1.3);
-            ctx.globalAlpha = 0.2;
-            ctx.filter = 'blur(4px)';
-            ctx.drawImage(canvas, 0, 0);
-            ctx.restore();
-
-            ctx.restore();
-
-            // 5. 请求下一帧
-            requestAnimationFrame(gameLoop);
-        }
-
-        // --- 4. 事件监听 ---
-        
-        // 窗口大小改变
-        window.addEventListener('resize', setCanvasSize);
-        
-        function handleInteractionStart(e) {
-            e.preventDefault();
-            const now = Date.now();
-            if (now - lastLaunchTime < 300) return;
-            
-            lastLaunchTime = now;
-            mouse.down = true;
-            let x, y;
-            if (e.touches) {
-                x = e.touches[0].clientX;
-                y = e.touches[0].clientY;
-            } else {
-                x = e.clientX;
-                y = e.clientY;
-            }
-            createExplosion(x, y, currentEffect);
-        }
-
-        function handleInteractionMove(e) {
-            // 禁用滑动发射以防止绕过冷却时间，仅保留阻止默认滚动行为
-            e.preventDefault();
-        }
-        
-        function handleInteractionEnd(e) {
-            e.preventDefault();
-            mouse.down = false;
-        }
-
-        function startRandomMode() {
-            stopRandomMode();
-            const launchRandomFirework = () => {
-                // 限制在居中长方形区域 (横向 20%-80%, 纵向 20%-70%)
-                const x = rand(canvasWidth * 0.2, canvasWidth * 0.8);
-                const y = rand(canvasHeight * 0.2, canvasHeight * 0.7);
-                const effectId = Math.floor(rand(0, 20));
-                createExplosion(x, y, effectId); // 直接炸开，去掉飞行过程
-            };
-
-            const intervalDuration = () => rand(300, 500); // 0.5 - 1s 随机间隔
-
-            randomModeInterval = setTimeout(() => {
-                launchRandomFirework();
-                randomModeInterval = setTimeout(arguments.callee, intervalDuration()); // 递归调用以实现随机间隔
-            }, intervalDuration());
-        }
-
-        function stopRandomMode() {
-            if (randomModeInterval !== null) {
-                clearTimeout(randomModeInterval);
-                randomModeInterval = null;
-            }
-        }
-
-        canvas.addEventListener('mousedown', handleInteractionStart);
-        canvas.addEventListener('touchstart', handleInteractionStart, { passive: false });
-        
-        canvas.addEventListener('mousemove', handleInteractionMove);
-        canvas.addEventListener('touchmove', handleInteractionMove, { passive: false });
-        
-        canvas.addEventListener('mouseup', handleInteractionEnd);
-        canvas.addEventListener('touchend', handleInteractionEnd);
-
-        let randomModeInterval = null;
-
-        // 全屏切换与随机模式联动
-        const trigger = document.getElementById('fullscreenTrigger');
-        trigger.addEventListener('click', () => {
-            if (!document.fullscreenElement) {
-                document.documentElement.requestFullscreen().catch(() => {});
-            } else {
-                document.exitFullscreen();
-            }
+            reader.readAsDataURL(file);
         });
+    }
 
-        document.addEventListener('fullscreenchange', () => {
-            if (document.fullscreenElement) {
-                startRandomMode();
+    // 下载 index.html
+    async function downloadIndex() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请先选择一个仓库");
+        log("正在拉取源码...", "loading");
+        try {
+            const res = await ghFetch(`https://api.github.com/repos/${repo}/contents/index.html`);
+            if (!res.ok) throw new Error("未找到 index.html 或读取失败");
+            const data = await res.json();
+            // 处理 Base64 解码并兼容中文
+            const binary = atob(data.content.replace(/\s/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+            const content = new TextDecoder().decode(bytes);
+            
+            const blob = new Blob([content], { type: 'text/html' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `index_${repo.split('/')[1]}.html`;
+            a.click();
+            URL.revokeObjectURL(url);
+            log("✅ 下载成功", "success");
+        } catch(e) { log(e.message, "error"); }
+    }
+
+
+
+    // 处理已有仓库更新
+    async function handleUpdate() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请选个仓库");
+        log("正在更新...", "loading");
+        try {
+            await uploadToGithub(repo);
+            log("✅ 更新成功！", "success");
+
+        } catch(e) { log(e.message, "error"); }
+    }
+
+    // 处理新建仓库托管
+    async function handleCreate() {
+        const name = document.getElementById('newRepoName').value;
+        if (!name) return alert("写个名字");
+        log("正在疯狂创建并配置中...", "loading");
+        
+        try {
+            const userRes = await ghFetch('https://api.github.com/user');
+            const username = (await userRes.json()).login;
+
+            // 1. 创建
+            const createRes = await ghFetch('https://api.github.com/user/repos', 'POST', {
+                name: name, auto_init: true
+            });
+            if (!createRes.ok) throw new Error("仓库名可能重复了");
+            
+            await new Promise(r => setTimeout(r, 2000)); // 歇两秒等分支生成
+
+            // 2. 传文件
+            await uploadToGithub(`${username}/${name}`);
+
+            // 3. 开 Pages
+            await ghFetch(`https://api.github.com/repos/${username}/${name}/pages`, 'POST', {
+                source: { branch: "main", path: "/" }
+            });
+
+            log(`✅ 创建并部署成功！\n地址: https://${username}.github.io/${name}/`, "success");
+
+            fetchRepos(); // 顺便刷新列表
+        } catch(e) { log(e.message, "error"); }
+    }
+
+    // 修改仓库名称
+    async function handleRename() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请先选择一个仓库");
+        const currentName = repo.split('/')[1];
+        const newName = prompt("请输入新的仓库名称 (英文/数字/短横线):", currentName);
+        if (!newName || newName.trim() === "" || newName.trim() === currentName) return;
+
+        log("正在重命名仓库...", "loading");
+        try {
+            const res = await ghFetch(`https://api.github.com/repos/${repo}`, 'PATCH', { 
+                name: newName.trim() 
+            });
+            if (res.ok) {
+                log("✅ 重命名成功！网址后缀已同步更新", "success");
+                await fetchRepos(); // 刷新列表
             } else {
-                stopRandomMode();
+                const data = await res.json();
+                throw new Error(data.message || "重命名失败");
             }
-        });
+        } catch(e) { log(e.message, "error"); }
+    }
 
-        // --- 5. 游戏启动 ---
-        setCanvasSize();
-        gameLoop();
+    // 彻底删除仓库
+    async function handleDelete() {
+        const repo = document.getElementById('repoSelect').value;
+        if (!repo) return alert("请先选择一个要删除的仓库");
+        
+        const confirmMsg = `⚠️ 极其危险操作！\n确定要彻底删除仓库 [${repo}] 吗？\n删除后无法找回！\n(注：Token 必须勾选 'delete_repo' 权限)`;
+        if (!confirm(confirmMsg)) return;
 
-    </script>
+        log("正在执行删除...", "loading");
+        try {
+            const res = await ghFetch(`https://api.github.com/repos/${repo}`, 'DELETE');
+            if (res.status === 204) {
+                log("✅ 仓库已永久删除", "success");
+                fetchRepos();
+            } else {
+                const data = await res.json();
+                throw new Error(data.message || "删除失败，请检查 Token 权限");
+            }
+        } catch(e) { log(e.message, "error"); }
+    }
+</script>
 </body>
 </html>
-
